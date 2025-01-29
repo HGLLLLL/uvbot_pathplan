@@ -1,0 +1,6 @@
+<launch>
+  <node name="object_detection_publisher" pkg="ball_detect" type="ball_detect_pub.py" output="screen">
+    <param name="camera_id" value="/dev/camera" />
+    <param name="yolo_model" value="$(find ball_detect)/scripts/best0703.pt" />
+  </node>
+</launch>
