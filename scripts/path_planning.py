@@ -28,6 +28,7 @@ class DisinfectionPlanner:
         else:
             stop_x, stop_y, orientation = obj_x, obj_y, 0
         return (stop_x, stop_y, orientation)
+    
 
     def tsp_path_schedule(self, objects, start_pose):
         stop_poses = []
@@ -49,6 +50,39 @@ class DisinfectionPlanner:
                 best_order = order
 
         return [stop_poses[i] for i in best_order]
+    
+    def publish_goal(self, stop_pose):
+        goal_msg = PoseStamped()
+        goal_msg.header.stamp = rospy.Time.now()
+        goal_msg.header.frame_id = "map"
+        goal_msg.pose.position.x = stop_pose[0]
+        goal_msg.pose.position.y = stop_pose[1]
+        goal_msg.pose.position.z = 0.0
+        
+        quat = quaternion_from_euler(0, 0, stop_pose[2])
+        goal_msg.pose.orientation.x = quat[0]
+        goal_msg.pose.orientation.y = quat[1]
+        goal_msg.pose.orientation.z = quat[2]
+        goal_msg.pose.orientation.w = quat[3]
+        
+        pub.publish(goal_msg)
+        rospy.loginfo(f"Published goal: ({stop_pose[0]:.4f}, {stop_pose[1]:.4f}, {stop_pose[2]:.2f} rad)")
+
+if __name__ == "__main__":
+    rospy.init_node("disinfection_planner")
+    pub = rospy.Publisher("/move_base_simple/goal", PoseStamped, queue_size=10)
+    rospy.sleep(1)  # 確保節點與話題連接
+
+    objects = [(-2, 2, 'bed'), (1, 2, 'counter'), (1, 0.6, 'counter'), (-0.6, 1, 'shelf')] 
+    start_pose = (0.0, 2, 0) 
+    
+    planner = DisinfectionPlanner()
+    path = planner.tsp_path_schedule(objects, start_pose)
+    
+    rospy.loginfo("開始發佈最優路徑目標點...")
+    for point in path:
+        planner.publish_goal(point)
+        rospy.sleep(2)  # 等待機器人執行
 
 objects = [(-2, 2, 'bed'), (1, 2, 'counter'), (1, 0.6, 'counter'), (-0.6, 1, 'shelf')] 
 start_pose = (0.0, 2, 0)
