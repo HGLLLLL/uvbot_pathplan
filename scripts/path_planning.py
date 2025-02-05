@@ -1,7 +1,11 @@
+#!/usr/bin/env python
 import math
 import numpy as np
+import rospy
 from scipy.spatial.distance import euclidean
 from itertools import permutations
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
+from tf.transformations import quaternion_from_euler, euler_from_quaternion
 
 class DisinfectionPlanner:
     def __init__(self, robot_width=0.6, safety_distance=0.2):
@@ -10,18 +14,13 @@ class DisinfectionPlanner:
         self.d = self.robot_radius + self.safety_distance
 
     def calculate_stop_pose(self, obj_x, obj_y, obj_type, approach_angle=0):
-
         if obj_type in ['chair', 'shelf']: 
-            # small stuff：沿approach_angle反方向停靠，面向物體
+            # small stuff：沿 approach_angle 的反方向停靠，面向物體
             stop_x = obj_x - self.d * math.cos(approach_angle)
             stop_y = obj_y - self.d * math.sin(approach_angle)
             orientation = approach_angle
         elif obj_type in ['bed', 'counter']:
-            # big stuff：朝向與approach_angle垂直
-            # side_angle = approach_angle - math.pi/2
-            # stop_x = obj_x + self.d * math.cos(side_angle)
-            # stop_y = obj_y + self.d * math.sin(side_angle)
-            # orientation = approach_angle + math.pi/2 
+            # big stuff：朝向與 approach_angle 垂直
             stop_x = obj_x - self.d * math.cos(approach_angle)
             stop_y = obj_y - self.d * math.sin(approach_angle)
             orientation = approach_angle + math.pi/2
@@ -29,7 +28,6 @@ class DisinfectionPlanner:
             stop_x, stop_y, orientation = obj_x, obj_y, 0
         return (stop_x, stop_y, orientation)
     
-
     def tsp_path_schedule(self, objects, start_pose):
         stop_poses = []
         for obj in objects:
@@ -51,7 +49,7 @@ class DisinfectionPlanner:
 
         return [stop_poses[i] for i in best_order]
     
-    def publish_goal(self, stop_pose):
+    def publish_goal(self, stop_pose, pub):
         goal_msg = PoseStamped()
         goal_msg.header.stamp = rospy.Time.now()
         goal_msg.header.frame_id = "map"
@@ -66,30 +64,38 @@ class DisinfectionPlanner:
         goal_msg.pose.orientation.w = quat[3]
         
         pub.publish(goal_msg)
-        rospy.loginfo(f"Published goal: ({stop_pose[0]:.4f}, {stop_pose[1]:.4f}, {stop_pose[2]:.2f} rad)")
+        rospy.loginfo("Published goal: ({:.4f}, {:.4f}, {:.2f} rad)".format(stop_pose[0], stop_pose[1], stop_pose[2]))
+
+current_start_pose = None
+
+def amcl_pose_callback(msg):
+    global current_start_pose
+
+    pos = msg.pose.pose.position
+    # 將四元數轉換成 yaw 角度
+    quat = msg.pose.pose.orientation
+    (_, _, yaw) = euler_from_quaternion([quat.x, quat.y, quat.z, quat.w])
+    current_start_pose = (pos.x, pos.y, yaw)
+    rospy.loginfo("AMCL Pose received: (%.4f, %.4f, %.2f rad)", pos.x, pos.y, yaw)
 
 if __name__ == "__main__":
     rospy.init_node("disinfection_planner")
-    pub = rospy.Publisher("/move_base_simple/goal", PoseStamped, queue_size=10)
-    rospy.sleep(1)  # 確保節點與話題連接
 
+    rospy.Subscriber("/amcl_pose", PoseWithCovarianceStamped, amcl_pose_callback)
+    pub = rospy.Publisher("/move_base_simple/goal", PoseStamped, queue_size=10)
+
+    rospy.loginfo("Waiting for AMCL")
+    while current_start_pose is None and not rospy.is_shutdown():
+        rospy.sleep(0.1)
+
+    # 可根據需要，從其他來源取得消毒物件的資訊
     objects = [(-2, 2, 'bed'), (1, 2, 'counter'), (1, 0.6, 'counter'), (-0.6, 1, 'shelf')] 
-    start_pose = (0.0, 2, 0) 
     
     planner = DisinfectionPlanner()
-    path = planner.tsp_path_schedule(objects, start_pose)
+
+    path = planner.tsp_path_schedule(objects, current_start_pose)
     
-    rospy.loginfo("開始發佈最優路徑目標點...")
+    rospy.loginfo("Start publishing goals")
     for point in path:
-        planner.publish_goal(point)
+        planner.publish_goal(point, pub)
         rospy.sleep(2)  # 等待機器人執行
-
-objects = [(-2, 2, 'bed'), (1, 2, 'counter'), (1, 0.6, 'counter'), (-0.6, 1, 'shelf')] 
-start_pose = (0.0, 2, 0)
-
-planner = DisinfectionPlanner()
-path = planner.tsp_path_schedule(objects, start_pose)
-
-print("最優路徑順序:")
-for point in path:
-    print(f"位置: ({point[0]:.4f}, {point[1]:.4f}), 朝向: {math.degrees(point[2]):.2f}°")

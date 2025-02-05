@@ -1,0 +1,6 @@
+<launch>
+
+    <!-- 啟動 Python 路徑規劃節點 -->
+    <node pkg="uvbot_pathplan" type="path_planning.py" name="path_planning" output="screen" />
+
+</launch>
