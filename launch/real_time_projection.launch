@@ -1,0 +1,22 @@
+<launch>
+    <!-- launch rosbag -->
+    <param name="use_sim_time" value="true" />
+    <arg name="bag_file" default="$(find uvbot_pathplan)/bags/hospital_208.bag" />
+
+    <node pkg="rosbag" type="play" name="rosbag_play" output="screen"
+        args="$(arg bag_file) --clock --loop" />
+
+    <!-- static transform from tm_tool0_controller to disinfect_cam -->
+    <node pkg="tf2_ros" type="static_transform_publisher" name="static_transform_disinfect_cam" 
+          args="0 0 0.18 3.14159 0 0 tm_tool0_controller disinfect_cam" />
+
+    <!-- launch scan transform python script -->
+    <node pkg="uvbot_pathplan" type="scan_transform.py" name="scan_transform" output="screen" />
+
+    <!-- launch real time projection script -->
+    <node pkg="uvbot_pathplan" type="real_time_projection.py" name="real_time_projection" output="screen" />
+
+    <!-- launch RViz -->
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find uvbot_pathplan)/rviz/scan_trans.rviz" />
+
+</launch>

@@ -1,5 +1,5 @@
-cmake_minimum_required(VERSION 3.0.2)
-project(ball_detect)
+cmake_minimum_required(VERSION 2.8.3)
+project(uvbot_pathplan)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
@@ -7,11 +7,14 @@ project(ball_detect)
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
+
 find_package(catkin REQUIRED COMPONENTS
   rospy
-  roscpp
+  geometry_msgs
   std_msgs
-  message_generation
+  sensor_msgs
+  tf2_ros
+  tf2_geometry_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -48,11 +51,7 @@ find_package(catkin REQUIRED COMPONENTS
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
-add_message_files(
-  FILES
-  BoundingBox.msg
-  BoundingBoxArray.msg
-)
+
 
 ## Generate services in the 'srv' folder
 # add_service_files(
@@ -69,10 +68,7 @@ add_message_files(
 # )
 
 ## Generate added messages and services with any dependencies listed here
-generate_messages(
-  DEPENDENCIES
-  std_msgs  
-)
+
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -104,9 +100,8 @@ generate_messages(
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
- LIBRARIES ball_detect
- CATKIN_DEPENDS rospy roscpp std_msgs message_runtime
- DEPENDS system_lib
+#  CATKIN_DEPENDS rospy roscpp std_msgs message_runtime
+#  DEPENDS system_lib
 )
 
 ###########
@@ -160,7 +155,10 @@ include_directories(
 ## Mark executable scripts (Python etc.) for installation
 ## in contrast to setup.py, you can choose the destination
  catkin_install_python(PROGRAMS
-   scripts/main.py
+   scripts/path_planning.py
+   scripts/scan_transform.py
+   scripts/scan_transform_test.py
+   scripts/real_time_projection.py
    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
