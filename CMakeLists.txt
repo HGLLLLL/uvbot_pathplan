@@ -159,6 +159,7 @@ include_directories(
    scripts/scan_transform.py
    scripts/real_time_projection.py
    scripts/realtime_projection_yolo.py
+   scripts/test.py
    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
