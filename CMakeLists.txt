@@ -157,8 +157,8 @@ include_directories(
  catkin_install_python(PROGRAMS
    scripts/path_planning.py
    scripts/scan_transform.py
-   scripts/scan_transform_test.py
    scripts/real_time_projection.py
+   scripts/realtime_projection_yolo.py
    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

@@ -21,8 +21,9 @@ latest_display_image = None
 window_name = "Realtime Scan Projection"
 
 def sync_callback(image_msg, scan_msg):
+
     global latest_display_image
-    rospy.loginfo("Callback triggered")
+    rospy.loginfo("Callback triggered") #test
     
     # convert image message to OpenCV image
     try:
@@ -43,6 +44,10 @@ def sync_callback(image_msg, scan_msg):
         return
 
     points = np.array(points, dtype=np.float32)
+
+    z_min, z_max = 0.0, 6 # only take points within this range (meters)
+    filtered_points = [p for p in points if z_min < p[2] < z_max]
+    points = np.array(filtered_points, dtype=np.float32)
 
     # project 3D points to 2D image plane
     rvec = np.zeros((3, 1), dtype=np.float32)
