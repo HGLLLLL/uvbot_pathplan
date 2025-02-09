@@ -6,6 +6,7 @@ import cv2 as cv
 import numpy as np
 import sensor_msgs.point_cloud2 as pc2
 from sensor_msgs.msg import Image, PointCloud2
+from geometry_msgs.msg import PointStamped
 from cv_bridge import CvBridge, CvBridgeError
 import message_filters
 import sys
@@ -14,16 +15,17 @@ import os
 import rospkg
 import threading
 import queue
+import tf
 
 # --------------------
-# camera parameters from old code
+# Camera intrinsic parameters
 K = np.array([[611.72529, 0, 323.12238],
               [0, 612.57867, 248.12445],
               [0, 0, 1]], dtype=np.float32)
 D = np.zeros(5, dtype=np.float32)
 
 # --------------------
-# load yolo model
+# Load YOLO model
 rospack = rospkg.RosPack()
 package_path = rospack.get_path('uvbot_pathplan')
 MODEL_PATH = os.path.join(package_path, 'scripts', 'no_background.pt')
@@ -32,15 +34,18 @@ model = YOLO(MODEL_PATH)
 bridge = CvBridge()
 
 # --------------------
-# global variables
+# Global variables
 latest_display_image = None   
 window_name = "Realtime Scan Projection"
 processing_queue = queue.Queue()
 
+# We now declare the tf_listener as None.
+tf_listener = None
+
 def sync_callback(image_msg, scan_msg):
     """
-    將收到的影像與光達訊息對放入 Queue，
-    若 Queue 中已有資料，先捨棄以避免延遲。
+    Put the incoming image and point cloud pair into the queue.
+    If the queue already has data, discard old messages to avoid delay.
     """
     while not processing_queue.empty():
         try:
@@ -48,23 +53,31 @@ def sync_callback(image_msg, scan_msg):
         except queue.Empty:
             break
     processing_queue.put((image_msg, scan_msg))
-    rospy.loginfo("Enqueued new message pair (old frames discarded).")
+    # rospy.loginfo("Enqueued new message pair (old frames discarded).")
 
 def processing_thread():
     """
-    重運算線程：
-    1. 取得 ROS 訊息後進行影像轉換、YOLO 物件偵測，
-    2. 讀取點雲並將其投影至影像平面，並取得對應的 2D 世界座標（從光達數據中取出）。
-    3. 對於每個偵測框，不論內部是否有光達點，皆取出該框內與框下方一定區域內的光達點，
-       然後過濾離群值，再計算平均作為該物體在 2D 平面上的位置，並標示在影像上。
+    Processing thread:
+      1. Convert the ROS image to an OpenCV image.
+      2. Run YOLO object detection.
+      3. Read the point cloud and project it onto the image plane.
+         Also, extract the full 3D coordinates (x,y,z) from the point cloud.
+      4. For each detected bounding box, regardless of whether points exist inside,
+         select points that fall within a region defined relative to the box’s center:
+             - Horizontally: from (center_x - 10) to (center_x + 10)
+             - Vertically: from center_y to (center_y + 100)
+      5. Filter out outlier points and compute the average of the remaining points.
+      6. Transform the resulting 3D position from the camera coordinate system to the map coordinate system.
+      7. Finally, display the transformed coordinates next to the bounding box.
     """
-    global latest_display_image
+    global latest_display_image, tf_listener
 
     allowed_classes = ["bed", "chair", "television", "handrail", "monitor", "side rail"]
-    # filter strange points
-    outlier_threshold = 0.5
-    # look down
-    vertical_offset = 100
+    outlier_threshold = 0.5  # in meters
+    vertical_offset = 100    # vertical extension in pixels for the region below the box
+
+    # Give tf_listener some time to get transforms.
+    rospy.sleep(1.0)
 
     while not rospy.is_shutdown():
         try:
@@ -74,7 +87,7 @@ def processing_thread():
 
         rospy.loginfo("Processing thread: received new message pair.")
 
-        # image message to OpenCV image
+        # 1. Convert image to OpenCV image.
         try:
             cv_image = bridge.imgmsg_to_cv2(image_msg, "bgr8")
             rospy.loginfo("Image size: {} x {}".format(cv_image.shape[1], cv_image.shape[0]))
@@ -82,17 +95,16 @@ def processing_thread():
             rospy.logerr("CvBridge Error: %s", e)
             continue
 
-        # yolo object detection
+        # 2. YOLO object detection.
         results = model(cv_image)
 
-        # scan point cloud projection
+        # 3. Process point cloud.
         points = np.array([p for p in pc2.read_points(scan_msg, field_names=("x", "y", "z"), skip_nans=True)], dtype=np.float32)
         if points.size == 0:
             rospy.loginfo("No valid scan points received.")
             pixel_points = None
             world_points = None
         else:
-            # filter points with z values outside the range [0, 6]
             valid_idx = (points[:, 2] > 0.0) & (points[:, 2] < 6.0)
             points = points[valid_idx]
             rvec = np.zeros((3, 1), dtype=np.float32)
@@ -101,70 +113,93 @@ def processing_thread():
             pixel_points = pixel_points.squeeze()
             if len(pixel_points.shape) == 1:
                 pixel_points = pixel_points.reshape(1, 2)
-            # take only x and y coordinates
-            world_points = points[:, :2]
+            world_points = points[:, :3]
 
-        # proceed yolo bounding box and calculate object position of each object
+        # 4. For each detected object, compute its 3D position.
         for result in results:
             for box in result.boxes:
-                # get box coordinates and confidence
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 conf = box.conf[0].item() if len(box.conf) > 0 else 0
-                if conf < 0.3:
+                if conf < 0.1:
                     continue
                 label = result.names[int(box.cls[0])] if len(box.cls) > 0 else "obj"
                 if label.lower() not in allowed_classes:
                     continue
 
-                # show bounding box and label
                 cv.rectangle(cv_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 cv.putText(cv_image, f"{label} {conf:.2f}", (x1, y1 - 10),
                            cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
                 # start to calculate object position
                 # take points in my chosen area
-                obj_position = None
+                # obj_position_cam = None
+                # if (pixel_points is not None) and (world_points is not None):
+                #     # points inside the bounding box
+                #     indices_in_box = np.where((pixel_points[:, 0] >= x1) & (pixel_points[:, 0] <= x2) &
+                #                                 (pixel_points[:, 1] >= y1) & (pixel_points[:, 1] <= y2))[0]
+                #     # points below the bounding box(look down)
+                #     search_y1 = y2
+                #     search_y2 = min(y2 + vertical_offset, cv_image.shape[0] - 1)
+                #     indices_below = np.where((pixel_points[:, 0] >= x1) & (pixel_points[:, 0] <= x2) &
+                #                               (pixel_points[:, 1] >= search_y1) & (pixel_points[:, 1] <= search_y2))[0]
+                #     # merge two sets of points
+                #     selected_indices = np.union1d(indices_in_box, indices_below)
+                #     if selected_indices.size > 0:
+                #         selected_points = world_points[selected_indices]
+                #         # filter strange points
+                #         mean_point = np.mean(selected_points, axis=0)
+                #         distances = np.linalg.norm(selected_points - mean_point, axis=1)
+                #         filtered_points = selected_points[distances < outlier_threshold]
+                #         if filtered_points.shape[0] > 0:
+                #             obj_position_cam = np.mean(filtered_points, axis=0)
+                #         else:
+                #             obj_position_cam = mean_point
+                
+                center_x = (x1 + x2) / 2.0
+                center_y = (y1 + y2) / 2.0
+
+                obj_position_cam = None
                 if (pixel_points is not None) and (world_points is not None):
-                    # points inside the bounding box
-                    indices_in_box = np.where((pixel_points[:, 0] >= x1) & (pixel_points[:, 0] <= x2) &
-                                                (pixel_points[:, 1] >= y1) & (pixel_points[:, 1] <= y2))[0]
-                    # points below the bounding box(look down)
-                    search_y1 = y2
-                    search_y2 = min(y2 + vertical_offset, cv_image.shape[0] - 1)
-                    indices_below = np.where((pixel_points[:, 0] >= x1) & (pixel_points[:, 0] <= x2) &
-                                              (pixel_points[:, 1] >= search_y1) & (pixel_points[:, 1] <= search_y2))[0]
-                    # merge two sets of points
-                    selected_indices = np.union1d(indices_in_box, indices_below)
+                    selected_indices = np.where(
+                        (pixel_points[:, 0] >= center_x - 20) & (pixel_points[:, 0] <= center_x + 20) &
+                        (pixel_points[:, 1] >= center_y) & (pixel_points[:, 1] <= y2 + 100)
+                    )[0]
                     if selected_indices.size > 0:
                         selected_points = world_points[selected_indices]
-                        # filter strange points
                         mean_point = np.mean(selected_points, axis=0)
                         distances = np.linalg.norm(selected_points - mean_point, axis=1)
                         filtered_points = selected_points[distances < outlier_threshold]
                         if filtered_points.shape[0] > 0:
-                            obj_position = np.mean(filtered_points, axis=0)
+                            obj_position_cam = np.mean(filtered_points, axis=0)
                         else:
-                            obj_position = mean_point
+                            obj_position_cam = mean_point
 
-                if obj_position is not None:
-                    #  the position of the object
-                    cv.putText(cv_image, f"Pos: ({obj_position[0]:.4f}, {obj_position[1]:.4f})",
-                               (x1, y2 + 20), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+                if obj_position_cam is not None:
+                    # 6. Transform point from camera frame to map frame.
+                    point_cam = PointStamped()
+                    point_cam.header.stamp = rospy.Time(0)  
+                    point_cam.header.frame_id = "disinfect_cam" 
+                    point_cam.point.x = float(obj_position_cam[0])
+                    point_cam.point.y = float(obj_position_cam[1])
+                    point_cam.point.z = float(obj_position_cam[2])
+                    if tf_listener.canTransform("map", point_cam.header.frame_id, rospy.Time(0)):
+                        point_map = tf_listener.transformPoint("map", point_cam)
+                        map_x = point_map.point.x
+                        map_y = point_map.point.y
+                        cv.putText(cv_image, f"Map: ({map_x:.2f}, {map_y:.2f})",
+                        (x1, y2 + 20), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+                    else:
+                        rospy.logwarn("Transform not available, skipping map coordinate display.")
 
-        # scan projection
         if pixel_points is not None:
             for pt in pixel_points:
                 x, y = int(pt[0]), int(pt[1])
                 if 0 <= x < cv_image.shape[1] and 0 <= y < cv_image.shape[0]:
                     cv.circle(cv_image, (x, y), 3, (255, 0, 0), -1)
 
-        # update the latest display image
         latest_display_image = cv_image
 
 def display_thread():
-    """
-    UI thread: display latest_display_image in OpenCV window.
-    """
     cv.namedWindow(window_name, cv.WINDOW_NORMAL)
     while not rospy.is_shutdown():
         if latest_display_image is not None:
@@ -174,19 +209,21 @@ def display_thread():
             break
 
 def main():
+    global tf_listener
     rospy.init_node("realtime_scan_projection", anonymous=True)
+    
+    # Create the tf listener after node initialization.
+    tf_listener = tf.TransformListener()
+    # rospy.sleep(1.0)  # Allow tf_listener to initialize properly 
 
-    # start processing thread
     proc_thread = threading.Thread(target=processing_thread)
     proc_thread.daemon = True
     proc_thread.start()
 
-    # start display thread
     ui_thread = threading.Thread(target=display_thread)
     ui_thread.daemon = True
     ui_thread.start()
 
-    # synchronize image and scan messages
     image_sub = message_filters.Subscriber("/camera/color/image_raw", Image)
     scan_sub = message_filters.Subscriber("/scan_trans", PointCloud2)
     ts = message_filters.ApproximateTimeSynchronizer([image_sub, scan_sub],

@@ -1,7 +1,7 @@
 <launch>
     <!-- launch rosbag -->
     <param name="use_sim_time" value="true" />
-    <arg name="bag_file" default="$(find uvbot_pathplan)/bags/hospital_208.bag" />
+    <arg name="bag_file" default="$(find uvbot_pathplan)/bags/localization_0208.bag" />
 
     <node pkg="rosbag" type="play" name="rosbag_play" output="screen"
         args="$(arg bag_file) --clock --loop" />
@@ -10,6 +10,6 @@
     <node pkg="uvbot_pathplan" type="scan_transform.py" name="scan_transform" output="screen" /> -->
 
     <!-- launch RViz -->
-    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find uvbot_pathplan)/rviz/scan_trans.rviz" />
+    <!-- <node name="rviz" pkg="rviz" type="rviz" args="-d $(find uvbot_pathplan)/rviz/scan_trans.rviz" /> -->
 
 </launch>

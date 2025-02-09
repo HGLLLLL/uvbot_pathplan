@@ -11,8 +11,8 @@ import message_filters
 import sys
 
 # parameters from old code
-K = np.array([[615.186, 0, 330.623],
-              [0, 615.263, 239.772],
+K = np.array([[611.72529, 0, 323.12238],
+              [0, 612.57867, 248.12445],
               [0, 0, 1]], dtype=np.float32)
 D = np.zeros(5, dtype=np.float32)
 
@@ -59,7 +59,7 @@ def sync_callback(image_msg, scan_msg):
     for pt in pixel_points:
         x, y = int(pt[0]), int(pt[1])
         if 0 <= x < cv_image.shape[1] and 0 <= y < cv_image.shape[0]:
-            cv.circle(cv_image, (x, y), 3, (0, 255, 0), -1)
+            cv.circle(cv_image, (x, y), 3, (0, 255, 0), -1)  
 
     latest_display_image = cv_image  
 
