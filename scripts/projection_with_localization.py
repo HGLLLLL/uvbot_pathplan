@@ -17,6 +17,9 @@ import threading
 import queue
 import tf
 
+from uvbot_pathplan.msg import ObjectWallPosition
+
+pub_obj_wall_pos = rospy.Publisher('/object_wall_position', ObjectWallPosition, queue_size=10)
 # --------------------
 # Camera intrinsic parameters
 K = np.array([[611.72529, 0, 323.12238],
@@ -28,7 +31,7 @@ D = np.zeros(5, dtype=np.float32)
 # Load YOLO model
 rospack = rospkg.RosPack()
 package_path = rospack.get_path('uvbot_pathplan')
-MODEL_PATH = os.path.join(package_path, 'scripts', 'no_background.pt')
+MODEL_PATH = os.path.join(package_path, 'scripts', 'hospital.pt')
 model = YOLO(MODEL_PATH)
 
 bridge = CvBridge()
@@ -39,7 +42,6 @@ latest_display_image = None
 window_name = "Realtime Scan Projection"
 processing_queue = queue.Queue()
 
-# We now declare the tf_listener as None.
 tf_listener = None
 
 def sync_callback(image_msg, scan_msg):
@@ -53,31 +55,31 @@ def sync_callback(image_msg, scan_msg):
         except queue.Empty:
             break
     processing_queue.put((image_msg, scan_msg))
+
+    #test
     # rospy.loginfo("Enqueued new message pair (old frames discarded).")
 
 def processing_thread():
     """
     Processing thread:
       1. Convert the ROS image to an OpenCV image.
-      2. Run YOLO object detection.
+      2. Run YOLO v8 detection.
       3. Read the point cloud and project it onto the image plane.
          Also, extract the full 3D coordinates (x,y,z) from the point cloud.
-      4. For each detected bounding box, regardless of whether points exist inside,
-         select points that fall within a region defined relative to the box’s center:
-             - Horizontally: from (center_x - 10) to (center_x + 10)
-             - Vertically: from center_y to (center_y + 100)
-      5. Filter out outlier points and compute the average of the remaining points.
-      6. Transform the resulting 3D position from the camera coordinate system to the map coordinate system.
-      7. Finally, display the transformed coordinates next to the bounding box.
+      4. For each detected bounding box, choose the points i want to use.
+      5. Filter out strange points and compute the average of the remaining points.
+      6. Transform the calculated result from the camera coordinate to the map coordinate 
+         and display result next to the bounding box.
     """
     global latest_display_image, tf_listener
 
-    allowed_classes = ["bed", "chair", "television", "handrail", "monitor", "side rail"]
+    allowed_classes = ["chair", "television", "handrail", "monitor", "side rail"]
     outlier_threshold = 0.5  # in meters
-    vertical_offset = 100    # vertical extension in pixels for the region below the box
+    vertical_offset = 150    # vertical extension in pixels for the region below the box
+    margin = 5              # margin to the image border
 
-    # Give tf_listener some time to get transforms.
-    rospy.sleep(1.0)
+    # optional: wait for tf_listener to initialize properly
+    # rospy.sleep(0.08) # (seconds)
 
     while not rospy.is_shutdown():
         try:
@@ -90,6 +92,7 @@ def processing_thread():
         # 1. Convert image to OpenCV image.
         try:
             cv_image = bridge.imgmsg_to_cv2(image_msg, "bgr8")
+            img_h, img_w = cv_image.shape[:2]
             rospy.loginfo("Image size: {} x {}".format(cv_image.shape[1], cv_image.shape[0]))
         except CvBridgeError as e:
             rospy.logerr("CvBridge Error: %s", e)
@@ -115,22 +118,27 @@ def processing_thread():
                 pixel_points = pixel_points.reshape(1, 2)
             world_points = points[:, :3]
 
-        # 4. For each detected object, compute its 3D position.
+        # 4. For each detected object, compute its 3D position (in camera coordinate).
         for result in results:
             for box in result.boxes:
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 conf = box.conf[0].item() if len(box.conf) > 0 else 0
-                if conf < 0.1:
+                if conf < 0.85:
                     continue
                 label = result.names[int(box.cls[0])] if len(box.cls) > 0 else "obj"
                 if label.lower() not in allowed_classes:
+                    continue
+                # Check if the bounding box is complete.
+                if x1 < margin or y1 < margin or x2 > (img_w - margin) or y2 > (img_h - margin):
+                    # Skip bounding boxes that are too close to the image border.
                     continue
 
                 cv.rectangle(cv_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 cv.putText(cv_image, f"{label} {conf:.2f}", (x1, y1 - 10),
                            cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
-                # start to calculate object position
+                # start to calculate object position (offers two ways to choose points)
+
                 # take points in my chosen area
                 # obj_position_cam = None
                 # if (pixel_points is not None) and (world_points is not None):
@@ -154,6 +162,7 @@ def processing_thread():
                 #             obj_position_cam = np.mean(filtered_points, axis=0)
                 #         else:
                 #             obj_position_cam = mean_point
+
                 
                 center_x = (x1 + x2) / 2.0
                 center_y = (y1 + y2) / 2.0
@@ -175,7 +184,7 @@ def processing_thread():
                             obj_position_cam = mean_point
 
                 if obj_position_cam is not None:
-                    # 6. Transform point from camera frame to map frame.
+                # 6. Transform point from camera frame to map frame.
                     point_cam = PointStamped()
                     point_cam.header.stamp = rospy.Time(0)  
                     point_cam.header.frame_id = "disinfect_cam" 
@@ -187,9 +196,102 @@ def processing_thread():
                         map_x = point_map.point.x
                         map_y = point_map.point.y
                         cv.putText(cv_image, f"Map: ({map_x:.2f}, {map_y:.2f})",
-                        (x1, y2 + 20), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+                                    (x1, y2 + 20), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
                     else:
-                        rospy.logwarn("Transform not available, skipping map coordinate display.")
+                        rospy.logwarn("物體 map 坐標變換不可用，僅顯示物體位置，不計算牆面位置。")
+                        # 如果物體的 map 坐標無法獲得，則跳過後續牆面位置的計算
+                        continue
+
+                        # 若能獲得 map 坐標，則計算牆面 ROI 及其 map 坐標
+                    if tf_listener.canTransform("map", "disinfect_cam", rospy.Time(0)):
+                        # 定義左右邊界的 ROI：
+                        # 左邊界 ROI：x 範圍 [x1-10, x1+10]，y 範圍 [y1, y2+vertical_offset]
+                        left_x_min = x1 - 10
+                        left_x_max = x1 + 10
+                        roi_left_indices = np.where(
+                            (pixel_points[:, 0] >= left_x_min) & (pixel_points[:, 0] <= left_x_max) &
+                            (pixel_points[:, 1] >= y1) & (pixel_points[:, 1] <= y2 + vertical_offset)
+                        )[0]
+                        wall_left_cam = None
+                        if roi_left_indices.size > 0:
+                            left_points = world_points[roi_left_indices]
+                            mean_left = np.mean(left_points, axis=0)
+                            distances_left = np.linalg.norm(left_points - mean_left, axis=1)
+                            filtered_left = left_points[distances_left < outlier_threshold]
+                            if filtered_left.shape[0] > 0:
+                                wall_left_cam = np.mean(filtered_left, axis=0)
+                            else:
+                                wall_left_cam = mean_left
+
+                        # 右邊界 ROI：x 範圍 [x2-10, x2+10]，y 範圍 [y1, y2+vertical_offset]
+                        right_x_min = x2 - 10
+                        right_x_max = x2 + 10
+                        roi_right_indices = np.where(
+                            (pixel_points[:, 0] >= right_x_min) & (pixel_points[:, 0] <= right_x_max) &
+                            (pixel_points[:, 1] >= y1) & (pixel_points[:, 1] <= y2 + vertical_offset)
+                        )[0]
+                        wall_right_cam = None
+                        if roi_right_indices.size > 0:
+                            right_points = world_points[roi_right_indices]
+                            mean_right = np.mean(right_points, axis=0)
+                            distances_right = np.linalg.norm(right_points - mean_right, axis=1)
+                            filtered_right = right_points[distances_right < outlier_threshold]
+                            if filtered_right.shape[0] > 0:
+                                wall_right_cam = np.mean(filtered_right, axis=0)
+                            else:
+                                wall_right_cam = mean_right
+
+                        # Transform 左側牆面點
+                        if wall_left_cam is not None:
+                            point_left = PointStamped()
+                            point_left.header.stamp = rospy.Time(0)
+                            point_left.header.frame_id = "disinfect_cam" 
+                            point_left.point.x = float(wall_left_cam[0])
+                            point_left.point.y = float(wall_left_cam[1])
+                            point_left.point.z = float(wall_left_cam[2])
+                            if tf_listener.canTransform("map", point_left.header.frame_id, rospy.Time(0)):
+                                point_left_map = tf_listener.transformPoint("map", point_left)
+                                map_left_x = point_left_map.point.x
+                                map_left_y = point_left_map.point.y
+                            else:
+                                rospy.logwarn("左側變換不可用，跳過左側牆面位置計算。")
+                                map_left_x = map_left_y = None
+
+                        # Transform 右側牆面點
+                        if wall_right_cam is not None:
+                            point_right = PointStamped()
+                            point_right.header.stamp = rospy.Time(0)
+                            point_right.header.frame_id = "disinfect_cam"
+                            point_right.point.x = float(wall_right_cam[0])
+                            point_right.point.y = float(wall_right_cam[1])
+                            point_right.point.z = float(wall_right_cam[2])
+                            if tf_listener.canTransform("map", point_right.header.frame_id, rospy.Time(0)):
+                                point_right_map = tf_listener.transformPoint("map", point_right)
+                                map_right_x = point_right_map.point.x
+                                map_right_y = point_right_map.point.y
+                            else:
+                                rospy.logwarn("右側變換不可用，跳過右側牆面位置計算。")
+                                map_right_x = map_right_y = None
+
+                        # 僅當左右牆面均成功計算 map 坐標時，才顯示牆面位置
+                        if map_left_x is not None and map_right_x is not None:
+                            cv.putText(cv_image, f"Wall: ({map_left_x:.2f}, {map_left_y:.2f}), ({map_right_x:.2f}, {map_right_y:.2f})",
+                                    (x1, y2 - 20), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+                            
+                        # Publish object and wall positions
+                        msg = ObjectWallPosition()
+                        msg.type = label
+                        msg.x_obj = map_x
+                        msg.y_obj = map_y
+                        msg.x_wall1 = map_left_x if 'map_left_x' in locals() else 0
+                        msg.y_wall1 = map_left_y if 'map_left_y' in locals() else 0
+                        msg.x_wall2 = map_right_x if 'map_right_x' in locals() else 0
+                        msg.y_wall2 = map_right_y if 'map_right_y' in locals() else 0
+
+                        pub_obj_wall_pos.publish(msg)
+                                                    
+                    else:
+                        rospy.logwarn("Map transform for wall positions not available, skipping wall computation.")
 
         if pixel_points is not None:
             for pt in pixel_points:
@@ -213,8 +315,7 @@ def main():
     rospy.init_node("realtime_scan_projection", anonymous=True)
     
     # Create the tf listener after node initialization.
-    tf_listener = tf.TransformListener()
-    # rospy.sleep(1.0)  # Allow tf_listener to initialize properly 
+    tf_listener = tf.TransformListener() 
 
     proc_thread = threading.Thread(target=processing_thread)
     proc_thread.daemon = True

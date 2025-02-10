@@ -17,13 +17,13 @@ pub_cloud = None
 def scan_callback(scan_msg):
     """
     When a LaserScan message is received from the /scan topic, each point is transformed from the
-    original frame (merged_laser_frame) to the target frame (tm_tool0_controller), 
+    original frame (merged_laser_frame) to the target frame (disinfect_cam), 
     and the transformed points are published as PointCloud2 messages to the /scan_trans topic.
     """
     transformed_points = []  
     angle = scan_msg.angle_min
 
-    # Check if the frame_id of LaserScan is 'merged_laser_frame'
+    #test
     if scan_msg.header.frame_id != "merged_laser_frame":
         rospy.logwarn("LaserScan frame_id is not 'merged_laser_frame', it is: %s", scan_msg.header.frame_id)
         return
@@ -41,22 +41,21 @@ def scan_callback(scan_msg):
         point_in_laser.point.z = 0.0
 
         try:
-            # Lookup the transform from merged_laser_frame to tm_tool0_controller
-            # transform = tfBuffer.lookup_transform("tm_tool0_controller",
-            #                                       "merged_laser_frame",  # Source frame
-            #                                       rospy.Time(0),  # Use the latest available transform
-            #                                       rospy.Duration(1.0))
+            # Lookup the transform from merged_laser_frame to disinfect_cam
             transform = tfBuffer.lookup_transform("disinfect_cam",
                                                   "merged_laser_frame",  # Source frame
                                                   rospy.Time(0),  # Use the latest available transform
-                                                  rospy.Duration(1.0))            
-            # Transform the point from merged_laser_frame to tm_tool0_controller
-            point_in_tool = tf2_geometry_msgs.do_transform_point(point_in_laser, transform)
+                                                  rospy.Duration(1.0)) 
+                       
+            # Transform the point from merged_laser_frame to disinfect_cam
+            point_in_cam = tf2_geometry_msgs.do_transform_point(point_in_laser, transform)
+
             # print(transform)
  
-            transformed_points.append([point_in_tool.point.x,
-                                       point_in_tool.point.y,
-                                       point_in_tool.point.z])
+            transformed_points.append([point_in_cam.point.x,
+                                       point_in_cam.point.y,
+                                       point_in_cam.point.z])
+            
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as ex:
             rospy.logwarn("Transform error: %s", ex)
 
