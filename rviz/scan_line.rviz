@@ -13,6 +13,7 @@ Panels:
         - /TF1/Frames1
         - /Marker1
         - /MarkerArray1
+        - /Pose1
       Splitter Ratio: 0.5
     Tree Height: 620
   - Class: rviz/Selection
@@ -358,11 +359,27 @@ Visualization Manager:
       Unreliable: false
       Use Timestamp: false
       Value: true
+    - Alpha: 1
+      Axes Length: 1
+      Axes Radius: 0.10000000149011612
+      Class: rviz/Pose
+      Color: 255; 25; 0
+      Enabled: true
+      Head Length: 0.30000001192092896
+      Head Radius: 0.10000000149011612
+      Name: Pose
+      Queue Size: 10
+      Shaft Length: 1
+      Shaft Radius: 0.05000000074505806
+      Shape: Arrow
+      Topic: /move_base_simple/goal
+      Unreliable: false
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
     Default Light: true
-    Fixed Frame: merged_laser_frame
+    Fixed Frame: map
     Frame Rate: 30
   Name: root
   Tools:
@@ -386,7 +403,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 7.003054618835449
+      Distance: 5.423165798187256
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -394,17 +411,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 0.02451537735760212
-        Y: -0.08463495969772339
-        Z: 0.05271276831626892
+        X: 0.6665304899215698
+        Y: 0.12119454145431519
+        Z: 0.8052508234977722
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.7853983044624329
+      Pitch: 0.7347971200942993
       Target Frame: <Fixed Frame>
-      Yaw: 5.906786918640137
+      Yaw: 3.5467827320098877
     Saved: ~
 Window Geometry:
   Displays:

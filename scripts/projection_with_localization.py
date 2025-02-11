@@ -184,7 +184,7 @@ def processing_thread():
                             obj_position_cam = mean_point
 
                 if obj_position_cam is not None:
-                # 6. Transform point from camera frame to map frame.
+                # Transform point from camera frame to map frame.
                     point_cam = PointStamped()
                     point_cam.header.stamp = rospy.Time(0)  
                     point_cam.header.frame_id = "disinfect_cam" 
@@ -198,14 +198,13 @@ def processing_thread():
                         cv.putText(cv_image, f"Map: ({map_x:.2f}, {map_y:.2f})",
                                     (x1, y2 + 20), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
                     else:
-                        rospy.logwarn("物體 map 坐標變換不可用，僅顯示物體位置，不計算牆面位置。")
-                        # 如果物體的 map 坐標無法獲得，則跳過後續牆面位置的計算
+                        rospy.logwarn("Can't get scan points of this bounding box")
                         continue
 
-                        # 若能獲得 map 坐標，則計算牆面 ROI 及其 map 坐標
+                    # calcualte wall position
                     if tf_listener.canTransform("map", "disinfect_cam", rospy.Time(0)):
-                        # 定義左右邊界的 ROI：
-                        # 左邊界 ROI：x 範圍 [x1-10, x1+10]，y 範圍 [y1, y2+vertical_offset]
+                        # define the region of interest (ROI) for wall detection
+                        # left boundary ROI: x range [x1-10, x1+10], y range [y1, y2+vertical_offset]
                         left_x_min = x1 - 10
                         left_x_max = x1 + 10
                         roi_left_indices = np.where(
@@ -223,7 +222,7 @@ def processing_thread():
                             else:
                                 wall_left_cam = mean_left
 
-                        # 右邊界 ROI：x 範圍 [x2-10, x2+10]，y 範圍 [y1, y2+vertical_offset]
+                        # right boundary ROI: x range [x2-10, x2+10], y range [y1, y2+vertical_offset]
                         right_x_min = x2 - 10
                         right_x_max = x2 + 10
                         roi_right_indices = np.where(
@@ -241,7 +240,7 @@ def processing_thread():
                             else:
                                 wall_right_cam = mean_right
 
-                        # Transform 左側牆面點
+                        # Transform left boundary point
                         if wall_left_cam is not None:
                             point_left = PointStamped()
                             point_left.header.stamp = rospy.Time(0)
@@ -254,10 +253,10 @@ def processing_thread():
                                 map_left_x = point_left_map.point.x
                                 map_left_y = point_left_map.point.y
                             else:
-                                rospy.logwarn("左側變換不可用，跳過左側牆面位置計算。")
+                                rospy.logwarn("Can't get left wall scan points。")
                                 map_left_x = map_left_y = None
 
-                        # Transform 右側牆面點
+                        # Transform right boundary point
                         if wall_right_cam is not None:
                             point_right = PointStamped()
                             point_right.header.stamp = rospy.Time(0)
@@ -270,10 +269,10 @@ def processing_thread():
                                 map_right_x = point_right_map.point.x
                                 map_right_y = point_right_map.point.y
                             else:
-                                rospy.logwarn("右側變換不可用，跳過右側牆面位置計算。")
+                                rospy.logwarn("Can' get right wall scan points.")
                                 map_right_x = map_right_y = None
 
-                        # 僅當左右牆面均成功計算 map 坐標時，才顯示牆面位置
+                        # Show wall positions on the image
                         if map_left_x is not None and map_right_x is not None:
                             cv.putText(cv_image, f"Wall: ({map_left_x:.2f}, {map_left_y:.2f}), ({map_right_x:.2f}, {map_right_y:.2f})",
                                     (x1, y2 - 20), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
