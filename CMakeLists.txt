@@ -55,6 +55,7 @@ find_package(catkin REQUIRED COMPONENTS
 add_message_files(
   FILES
   ObjectWallPosition.msg
+  FilteredSegment.msg
 )
 
 generate_messages(
@@ -172,6 +173,7 @@ include_directories(
   scripts/realtime_projection_yolo.py
   scripts/test.py
   scripts/projection_with_localization.py
+  scripts/line_calculation.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

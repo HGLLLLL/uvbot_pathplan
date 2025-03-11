@@ -31,7 +31,7 @@ D = np.zeros(5, dtype=np.float32)
 # Load YOLO model
 rospack = rospkg.RosPack()
 package_path = rospack.get_path('uvbot_pathplan')
-MODEL_PATH = os.path.join(package_path, 'scripts', 'hospital.pt')
+MODEL_PATH = os.path.join(package_path, 'scripts', 'good.pt')
 model = YOLO(MODEL_PATH)
 
 bridge = CvBridge()
@@ -73,9 +73,9 @@ def processing_thread():
     """
     global latest_display_image, tf_listener
 
-    allowed_classes = ["chair", "television", "handrail", "monitor", "side rail"]
+    allowed_classes = ["chair", "television", "handrail", "monitor", "side rail", "switch"]
     outlier_threshold = 0.5  # in meters
-    vertical_offset = 150    # vertical extension in pixels for the region below the box
+    vertical_offset = 245   # vertical extension in pixels for the region below the box   #150
     margin = 5              # margin to the image border
 
     # optional: wait for tf_listener to initialize properly
@@ -128,6 +128,14 @@ def processing_thread():
                 label = result.names[int(box.cls[0])] if len(box.cls) > 0 else "obj"
                 if label.lower() not in allowed_classes:
                     continue
+
+                if label.lower() == "side rail":
+                    width = x2 - x1
+                    height = y2 - y1
+                    if width <= 238 or height <= 151:
+                        rospy.loginfo("Discard side rail box with width %d and height %d", width, height)
+                        continue
+
                 # Check if the bounding box is complete.
                 if x1 < margin or y1 < margin or x2 > (img_w - margin) or y2 > (img_h - margin):
                     # Skip bounding boxes that are too close to the image border.
@@ -171,7 +179,7 @@ def processing_thread():
                 if (pixel_points is not None) and (world_points is not None):
                     selected_indices = np.where(
                         (pixel_points[:, 0] >= center_x - 20) & (pixel_points[:, 0] <= center_x + 20) &
-                        (pixel_points[:, 1] >= center_y) & (pixel_points[:, 1] <= y2 + 100)
+                        (pixel_points[:, 1] >= center_y) & (pixel_points[:, 1] <= y2 + 245)  #100
                     )[0]
                     if selected_indices.size > 0:
                         selected_points = world_points[selected_indices]
@@ -205,8 +213,8 @@ def processing_thread():
                     if tf_listener.canTransform("map", "disinfect_cam", rospy.Time(0)):
                         # define the region of interest (ROI) for wall detection
                         # left boundary ROI: x range [x1-10, x1+10], y range [y1, y2+vertical_offset]
-                        left_x_min = x1 - 10
-                        left_x_max = x1 + 10
+                        left_x_min = x1 + 41
+                        left_x_max = x1 + 51
                         roi_left_indices = np.where(
                             (pixel_points[:, 0] >= left_x_min) & (pixel_points[:, 0] <= left_x_max) &
                             (pixel_points[:, 1] >= y1) & (pixel_points[:, 1] <= y2 + vertical_offset)
@@ -223,8 +231,8 @@ def processing_thread():
                                 wall_left_cam = mean_left
 
                         # right boundary ROI: x range [x2-10, x2+10], y range [y1, y2+vertical_offset]
-                        right_x_min = x2 - 10
-                        right_x_max = x2 + 10
+                        right_x_min = x2 - 5
+                        right_x_max = x2 + 5
                         roi_right_indices = np.where(
                             (pixel_points[:, 0] >= right_x_min) & (pixel_points[:, 0] <= right_x_max) &
                             (pixel_points[:, 1] >= y1) & (pixel_points[:, 1] <= y2 + vertical_offset)

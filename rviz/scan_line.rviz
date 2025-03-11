@@ -7,13 +7,8 @@ Panels:
         - /Global Options1
         - /Status1
         - /PointCloud21
-        - /LaserScan1
-        - /DepthCloud1
         - /DepthCloud1/Auto Size1
         - /TF1/Frames1
-        - /Marker1
-        - /MarkerArray1
-        - /Pose1
       Splitter Ratio: 0.5
     Tree Height: 620
   - Class: rviz/Selection
@@ -374,6 +369,14 @@ Visualization Manager:
       Shape: Arrow
       Topic: /move_base_simple/goal
       Unreliable: false
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /visualization_marker
+      Name: Marker
+      Namespaces:
+        {}
+      Queue Size: 100
       Value: true
   Enabled: true
   Global Options:

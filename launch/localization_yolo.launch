@@ -1,7 +1,7 @@
 <launch>
     <!-- launch rosbag -->
     <param name="use_sim_time" value="true" />
-    <arg name="bag_file" default="$(find uvbot_pathplan)/bags/hospital_0211.bag" />
+    <arg name="bag_file" default="$(find uvbot_pathplan)/bags/hospital_0212.bag" />
 
     <node pkg="rosbag" type="play" name="rosbag_play" output="screen"
         args="$(arg bag_file) --clock --loop -r 0.5" />
@@ -14,24 +14,24 @@
     <node pkg="uvbot_pathplan" type="scan_transform.py" name="scan_transform" output="screen" />
 
     <!-- launch laser line extraction -->
-    <!-- <node name="line_extractor" pkg="laser_line_extraction" type="line_extraction_node"> -->
-      <!-- <param name="~frequency" value="30.0" /> -->
+    <node name="line_extractor" pkg="laser_line_extraction" type="line_extraction_node">
+      <param name="~frequency" value="30.0" />
       <!-- <param name="~frame_id" value="merged_laser_frame" /> -->
-      <!-- <param name="~frame_id" value="laser" /> -->
-      <!-- <param name="~scan_topic" value="/scan" /> -->
-      <!-- <param name="~publish_markers" value="true" /> -->
-      <!-- <param name="~bearing_std_dev" value="1e-5" /> -->
-      <!-- <param name="~range_std_dev" value="0.012" /> -->
-      <!-- <param name="~least_sq_angle_thresh" value="0.0001" /> -->
-      <!-- <param name="~least_sq_radius_thresh" value="0.0001" /> -->
-      <!-- <param name="~max_line_gap" value="0.5" /> -->
-      <!-- <param name="~min_line_length" value="0.7" /> -->
-      <!-- <param name="~min_range" value="0.5" /> -->
-      <!-- <param name="~max_range" value="250.0" /> -->
-      <!-- <param name="~min_split_dist" value="0.04" /> -->
-      <!-- <param name="~outlier_dist" value="0.06" /> -->
-      <!-- <param name="~min_line_points" value="10" /> -->
-    <!-- </node> -->
+      <param name="~frame_id" value="laser" />
+      <param name="~scan_topic" value="/scan" />
+      <param name="~publish_markers" value="true" />
+      <param name="~bearing_std_dev" value="1e-5" />
+      <param name="~range_std_dev" value="0.012" />
+      <param name="~least_sq_angle_thresh" value="0.0001" />
+      <param name="~least_sq_radius_thresh" value="0.0001" />
+      <param name="~max_line_gap" value="0.5" />
+      <param name="~min_line_length" value="0.7" />
+      <param name="~min_range" value="0.5" />
+      <param name="~max_range" value="250.0" />
+      <param name="~min_split_dist" value="0.04" />
+      <param name="~outlier_dist" value="0.06" />
+      <param name="~min_line_points" value="10" />
+    </node>
 
     <!-- launch real time projection script -->
     <node pkg="uvbot_pathplan" type="projection_with_localization.py" name="projection_with_localization" output="screen" />

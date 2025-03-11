@@ -8,6 +8,7 @@ from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from tf.transformations import quaternion_from_euler, euler_from_quaternion
 from collections import defaultdict
 from uvbot_pathplan.msg import ObjectWallPosition  # 引入自定義訊息
+from visualization_msgs.msg import Marker
 
 class DisinfectionPlanner:
     def __init__(self, robot_width=0.6, safety_distance=0.2, cluster_threshold=0.5):
@@ -24,6 +25,10 @@ class DisinfectionPlanner:
         # 訂閱 /object_wall_position 訊息（型態為 ObjectWallPosition）
         rospy.Subscriber("/object_wall_position", ObjectWallPosition, self.object_wall_callback)
         self.pub = rospy.Publisher("/move_base_simple/goal", PoseStamped, queue_size=10)
+
+        self.marker_pub = rospy.Publisher("visualization_marker", Marker, queue_size=10)
+        self.marker_id = 0
+
 
     def object_wall_callback(self, msg):
         """
@@ -59,11 +64,19 @@ class DisinfectionPlanner:
         根據物體與牆面資訊計算機器人的停靠點。
         """
         wall_angle, perp_angle = self.calculate_wall_direction(wall_p1, wall_p2)
+
         if obj_type.lower() in ['chair']:
             stop_x = obj_x + self.d * math.cos(perp_angle)
             stop_y = obj_y + self.d * math.sin(perp_angle)
             reverse_perp_angle = perp_angle + math.pi
             orientation = reverse_perp_angle
+
+        elif obj_type.lower() in ["switch"]:
+            reverse_perp_angle = perp_angle + math.pi
+            stop_x = obj_x + self.d * math.cos(reverse_perp_angle)
+            stop_y = obj_y + self.d * math.sin(reverse_perp_angle)
+            orientation = perp_angle
+
         elif obj_type.lower() in ['side rail']:
             stop_x = obj_x + self.d * math.cos(perp_angle)
             stop_y = obj_y + self.d * math.sin(perp_angle)
@@ -72,7 +85,7 @@ class DisinfectionPlanner:
             stop_x, stop_y, orientation = obj_x, obj_y, 0
         return (stop_x, stop_y, orientation)
 
-    def cluster_detections(self, det_list, cluster_threshold=None, outlier_factor=0.35):
+    def cluster_detections(self, det_list, cluster_threshold=None, outlier_factor=1.0):
         """
         對同一類型內所有檢測進行聚類（僅聚類位置接近的數據），
         並在每個聚類組內剔除離群值（與群組中心差距過大的數據）。
@@ -134,7 +147,7 @@ class DisinfectionPlanner:
             if obj_type.lower() == 'chair':
                 threshold = 1.3  # 椅子類型使用較大的聚類閾值
             elif obj_type.lower() == 'side rail':
-                threshold = 0.1  # 側軌類型使用較小的聚類閾值
+                threshold = 0.4  # 側軌類型使用較小的聚類閾值
             else:
                 threshold = self.cluster_threshold  # 其他類型使用預設值
 
@@ -145,7 +158,7 @@ class DisinfectionPlanner:
                 stop_poses.append(pose)
         return stop_poses
     
-    def merge_stop_poses(self, stop_poses, merge_threshold=0.3):
+    def merge_stop_poses(self, stop_poses, merge_threshold=0.75):
         """
         將計算得到的停靠點進行合併：
         若多個停靠點彼此間距離小於 merge_threshold，
@@ -205,6 +218,32 @@ class DisinfectionPlanner:
         self.pub.publish(goal_msg)
         rospy.loginfo("Published goal: ({:.2f}, {:.2f}, {:.2f} rad)".format(*stop_pose))
 
+        marker = Marker()
+        marker.header.stamp = rospy.Time.now()
+        marker.header.frame_id = "map"
+        marker.ns = "stop_poses"
+        marker.id = self.marker_id
+        self.marker_id += 1
+        marker.type = Marker.ARROW
+        marker.action = Marker.ADD
+        marker.pose.position.x = stop_pose[0]
+        marker.pose.position.y = stop_pose[1]
+        marker.pose.position.z = 0.0
+        marker.pose.orientation.x = quat[0]
+        marker.pose.orientation.y = quat[1]
+        marker.pose.orientation.z = quat[2]
+        marker.pose.orientation.w = quat[3]
+        marker.scale.x = 0.8  # 箭桿長度
+        marker.scale.y = 0.05 # 箭桿寬度
+        marker.scale.z = 0.1 # 箭頭大小
+        marker.color.a = 1.0
+        marker.color.r = 1.0
+        marker.color.g = 0.0
+        marker.color.b = 0.0
+        # lifetime 設為 0 表示永久顯示
+        marker.lifetime = rospy.Duration(0)
+        self.marker_pub.publish(marker)
+
     def process_and_plan(self, current_start_pose):
         """
         掃描 scan_time 秒後，對收集到的所有 /object_wall_position 訊息進行一次聚類，
@@ -218,7 +257,7 @@ class DisinfectionPlanner:
             if obj_type.lower() == 'chair':
                 threshold = 1.3
             elif obj_type.lower() == 'side rail':
-                threshold = 0.1
+                threshold = 0.4
             else:
                 threshold = self.cluster_threshold
 
@@ -280,7 +319,7 @@ if __name__ == "__main__":
         rospy.sleep(0.1)
     
     # 設定掃描時間 (scan_time) 秒內收集 /object_wall_position 訊息
-    scan_time =  150
+    scan_time = 80
     rospy.loginfo("Scanning for detections for %.1f seconds...", scan_time)
     rospy.sleep(scan_time)
     
