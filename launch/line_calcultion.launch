@@ -34,7 +34,7 @@
 
     <!-- launch line calculation script -->
     <node pkg="uvbot_pathplan" type="line_calculation.py" name="line_calculation" output="screen" >
-      <param name="~max_gap" value="0.5"/>
+      <param name="~max_gap" value="1"/>
       <param name="~scan_time" value="70"/>
     </node>
 

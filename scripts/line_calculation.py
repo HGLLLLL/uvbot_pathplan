@@ -52,10 +52,9 @@ def merge_segments(segments):
     """
     Merge segments that belong to the same complete line.
     
-    For each segment, we compute a feature vector [2*angle, r]:
+    For each segment, compute a feature vector [2*angle, r]:
       - The segment's angle is computed (in [0, pi)) so that reversed segments are equivalent.
       - A normal vector n = [-sin(angle), cos(angle)] is defined and r is computed as dot(midpoint, n).
-      - The angle dimension is scaled (multiplied by 2) for better balancing.
       
     DBSCAN clusters segments with similar features. Then, for each cluster, all endpoints are collected,
     and PCA is performed to find the principal (line) direction. The endpoints are projected onto this direction.
@@ -184,6 +183,8 @@ def main():
     rospy.loginfo("Collecting line_segment data for %.2f seconds...", scan_time)
     rospy.sleep(scan_time)
     scanning = False
+
+    rospy.loginfo("Total original segments received: %d", len(line_segments))
     
     # Merge segments into complete lines.
     merged_segments = merge_segments(line_segments)
