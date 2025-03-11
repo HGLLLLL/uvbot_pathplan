@@ -8,14 +8,11 @@ from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point, PointStamped
 from laser_line_extraction.msg import LineSegmentList
 
-# Import the custom message for a filtered (merged) segment.
-# Replace 'your_package' with your actual package name.
 from uvbot_pathplan.msg import FilteredSegment
 
 from sklearn.cluster import DBSCAN
 
 # Global variable to store transformed line segments (in map frame)
-# Each segment is stored as [start_x, start_y, end_x, end_y]
 line_segments = []
 scanning = True
 tf_listener = None
@@ -26,7 +23,7 @@ def transform_point(listener, point, from_frame, to_frame):
     """
     pt_stamped = PointStamped()
     pt_stamped.header.frame_id = from_frame
-    pt_stamped.header.stamp = rospy.Time(0)  # Latest available transform
+    pt_stamped.header.stamp = rospy.Time(0) 
     pt_stamped.point.x = point[0]
     pt_stamped.point.y = point[1]
     pt_stamped.point.z = 0.0
