@@ -3,8 +3,7 @@
     <param name="use_sim_time" value="true" />
     <arg name="bag_file" default="$(find uvbot_pathplan)/bags/hospital_0212.bag" />
 
-    <node pkg="rosbag" type="play" name="rosbag_play" output="screen"
-        args="$(arg bag_file) --clock --loop -r 0.5" />
+    <node pkg="rosbag" type="play" name="rosbag_play" args="$(arg bag_file) --clock --loop -r 0.3" />
 
     <!-- static transform from tm_tool0_controller to disinfect_cam -->
     <node pkg="tf2_ros" type="static_transform_publisher" name="static_transform_disinfect_cam" 
@@ -16,7 +15,7 @@
     <!-- launch laser line extraction -->
     <node name="line_extractor" pkg="laser_line_extraction" type="line_extraction_node">
       <param name="~frequency" value="30.0" />
-      <!-- <param name="~frame_id" value="merged_laser_frame" /> -->
+      <param name="~frame_id" value="merged_laser_frame" />
       <param name="~frame_id" value="laser" />
       <param name="~scan_topic" value="/scan" />
       <param name="~publish_markers" value="true" />
@@ -34,10 +33,22 @@
     </node>
 
     <!-- launch real time projection script -->
-    <node pkg="uvbot_pathplan" type="projection_with_localization.py" name="projection_with_localization" output="screen" />
+    <node pkg="uvbot_pathplan" type="projection_with_localization.py" name="projection_with_localization" >
+      <param name="~yolo_confidence_threshold" value="0.85"/>
+    </node>
 
-    <!-- launch ubbot path planning -->\
-    <node pkg="uvbot_pathplan" type="path_planning.py" name="path_planning" output="screen" />
+    <!-- launch line calculation script -->
+    <node pkg="uvbot_pathplan" type="line_calculation.py" name="line_calculation" output="screen" >
+      <param name="~max_gap" value="1"/>
+      <param name="~scan_time" value="65"/>
+      <param name="~min_segment_length" value="1.0"/>
+    </node>
+
+    
+    <!-- launch uvbot path planning -->
+    <node pkg="uvbot_pathplan" type="path_planning.py" name="path_planning" output="screen" >
+      <param name="~scan_time" value="80"/>
+    </node>
 
     <!-- launch RViz -->
     <node name="rviz" pkg="rviz" type="rviz" args="-d $(find uvbot_pathplan)/rviz/scan_line.rviz" />

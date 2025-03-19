@@ -52,9 +52,10 @@ def merge_segments(segments):
     """
     Merge segments that belong to the same complete line.
     
-    For each segment, compute a feature vector [2*angle, r]:
+    For each segment, we compute a feature vector [2*angle, r]:
       - The segment's angle is computed (in [0, pi)) so that reversed segments are equivalent.
       - A normal vector n = [-sin(angle), cos(angle)] is defined and r is computed as dot(midpoint, n).
+      - The angle dimension is scaled (multiplied by 2) for better balancing.
       
     DBSCAN clusters segments with similar features. Then, for each cluster, all endpoints are collected,
     and PCA is performed to find the principal (line) direction. The endpoints are projected onto this direction.
@@ -62,6 +63,8 @@ def merge_segments(segments):
     The projected points are then grouped into contiguous clusters if the gap between consecutive points
     exceeds a threshold (~max_gap, in meters, defined by a ROS parameter). Each group is merged separately,
     so that segments far apart along the line are not merged together.
+    
+    Additionally, if the merged result is too short (i.e. an isolated point), it is filtered out.
     
     Returns:
       A list of merged segments, each as a tuple: (start, end) with start and end being [x, y].
@@ -88,7 +91,7 @@ def merge_segments(segments):
     features = np.array(features)
     
     # Cluster segments based on line orientation and offset.
-    clustering = DBSCAN(eps=0.15, min_samples=1).fit(features) # eps=0.28, min_samples=1
+    clustering = DBSCAN(eps=0.15, min_samples=1).fit(features)
     labels = clustering.labels_
     
     merged_segments = []
@@ -136,6 +139,12 @@ def merge_segments(segments):
             max_proj = np.max(group)
             p_min = mean + min_proj * direction
             p_max = mean + max_proj * direction
+            
+            # Filter out isolated points or very short segments.
+            min_segment_length = rospy.get_param("~min_segment_length", 0.2)
+            if np.linalg.norm(p_max - p_min) < min_segment_length:
+                continue
+            
             merged_segments.append((p_min.tolist(), p_max.tolist()))
     
     return merged_segments
@@ -167,7 +176,7 @@ def main():
     global scanning, tf_listener, line_segments
     rospy.init_node('line_segment_merge_node')
     
-    # Get scan_time (seconds) from the parameter server; default is 10 seconds.
+    # Get scan_time (seconds) from the parameter server; default is 30 seconds.
     scan_time = rospy.get_param("~scan_time", 30.0)
     
     # Initialize TF listener and wait briefly for TF data.
@@ -184,6 +193,7 @@ def main():
     rospy.sleep(scan_time)
     scanning = False
 
+    # Log the total number of original input segments.
     rospy.loginfo("Total original segments received: %d", len(line_segments))
     
     # Merge segments into complete lines.
@@ -196,18 +206,21 @@ def main():
         rospy.loginfo("No merged segments obtained!")
         return
     
-    rospy.loginfo("Publishing markers and merged segment messages...")
+    # Publish each filtered segment once.
+    rospy.loginfo("Publishing filtered segments once...")
+    for seg in merged_segments:
+        filtered_msg = FilteredSegment()
+        filtered_msg.x_start = seg[0][0]
+        filtered_msg.y_start = seg[0][1]
+        filtered_msg.x_end   = seg[1][0]
+        filtered_msg.y_end   = seg[1][1]
+        filtered_seg_pub.publish(filtered_msg)
+    
+    # Optionally, continuously publish markers for visualization.
+    rospy.loginfo("Publishing markers continuously...")
     rate = rospy.Rate(1)
     while not rospy.is_shutdown():
         publish_marker(marker_pub, merged_segments)
-        # Publish each merged segment as a FilteredSegment message.
-        for seg in merged_segments:
-            filtered_msg = FilteredSegment()
-            filtered_msg.x_start = seg[0][0]
-            filtered_msg.y_start = seg[0][1]
-            filtered_msg.x_end   = seg[1][0]
-            filtered_msg.y_end   = seg[1][1]
-            filtered_seg_pub.publish(filtered_msg)
         rate.sleep()
 
 if __name__ == '__main__':

@@ -123,7 +123,8 @@ def processing_thread():
             for box in result.boxes:
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 conf = box.conf[0].item() if len(box.conf) > 0 else 0
-                if conf < 0.85:
+                conf_min = rospy.get_param("~yolo_confidence_threshold")
+                if conf < conf_min:
                     continue
                 label = result.names[int(box.cls[0])] if len(box.cls) > 0 else "obj"
                 if label.lower() not in allowed_classes:

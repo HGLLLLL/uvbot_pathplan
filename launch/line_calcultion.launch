@@ -36,6 +36,8 @@
     <node pkg="uvbot_pathplan" type="line_calculation.py" name="line_calculation" output="screen" >
       <param name="~max_gap" value="1"/>
       <param name="~scan_time" value="70"/>
+      <param name="~min_segment_length" value="1.0"/>
+
     </node>
 
     <!-- launch real time projection script -->
