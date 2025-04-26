@@ -171,7 +171,8 @@ include_directories(
   scripts/scan_transform.py
   scripts/real_time_projection.py
   scripts/realtime_projection_yolo.py
-  scripts/test.py
+  scripts/kalman_filter.py
+  scripts/kalman_visualized.py
   scripts/projection_with_localization.py
   scripts/line_calculation.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}

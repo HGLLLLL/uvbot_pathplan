@@ -89,7 +89,7 @@ def processing_thread():
 
         rospy.loginfo("Processing thread: received new message pair.")
 
-        # 1. Convert image to OpenCV image.
+        # Convert image to OpenCV image.
         try:
             cv_image = bridge.imgmsg_to_cv2(image_msg, "bgr8")
             img_h, img_w = cv_image.shape[:2]
@@ -98,10 +98,10 @@ def processing_thread():
             rospy.logerr("CvBridge Error: %s", e)
             continue
 
-        # 2. YOLO object detection.
+        # YOLO object detection.
         results = model(cv_image)
 
-        # 3. Process point cloud.
+        # Process point cloud.
         points = np.array([p for p in pc2.read_points(scan_msg, field_names=("x", "y", "z"), skip_nans=True)], dtype=np.float32)
         if points.size == 0:
             rospy.loginfo("No valid scan points received.")
@@ -118,7 +118,7 @@ def processing_thread():
                 pixel_points = pixel_points.reshape(1, 2)
             world_points = points[:, :3]
 
-        # 4. For each detected object, compute its 3D position (in camera coordinate).
+        # For each detected object, compute its 3D position (in camera coordinate).
         for result in results:
             for box in result.boxes:
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
@@ -301,11 +301,13 @@ def processing_thread():
                     else:
                         rospy.logwarn("Map transform for wall positions not available, skipping wall computation.")
 
-        if pixel_points is not None:
+        # Decide whether to display the pixel points on the image.
+        """ if pixel_points is not None:
             for pt in pixel_points:
                 x, y = int(pt[0]), int(pt[1])
                 if 0 <= x < cv_image.shape[1] and 0 <= y < cv_image.shape[0]:
                     cv.circle(cv_image, (x, y), 3, (255, 0, 0), -1)
+         """
 
         latest_display_image = cv_image
 

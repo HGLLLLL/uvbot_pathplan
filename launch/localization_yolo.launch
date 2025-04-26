@@ -34,7 +34,7 @@
 
     <!-- launch real time projection script -->
     <node pkg="uvbot_pathplan" type="projection_with_localization.py" name="projection_with_localization" >
-      <param name="~yolo_confidence_threshold" value="0.85"/>
+      <param name="~yolo_confidence_threshold" value="0.75"/>
     </node>
 
     <!-- launch line calculation script -->
@@ -43,6 +43,14 @@
       <param name="~scan_time" value="65"/>
       <param name="~min_segment_length" value="1.0"/>
     </node>
+
+    <!-- launch kalman filter script -->
+    <node pkg="uvbot_pathplan" type="kalman_filter.py" name="kalman_filter" output="screen" />
+    
+    <!-- launch kalman visualized script -->
+    <!-- <node pkg="uvbot_pathplan" type="kalman_visualized.py" name="kalman_visualized" output="screen" > -->
+      <!-- <param name="~plot_duration" value="53"/> -->
+    <!-- </node> -->
 
     
     <!-- launch uvbot path planning -->

@@ -43,7 +43,7 @@
     <!-- launch real time projection script -->
     <!-- <node pkg="uvbot_pathplan" type="projection_with_localization.py" name="projection_with_localization" output="screen" /> -->
 
-    <!-- launch ubbot path planning -->\
+    <!-- launch uvbot path planning -->\
     <!-- <node pkg="uvbot_pathplan" type="path_planning.py" name="path_planning" output="screen" /> -->
 
     <!-- launch RViz -->

@@ -12,7 +12,7 @@ from uvbot_pathplan.msg import FilteredSegment
 from visualization_msgs.msg import Marker
 
 class DisinfectionPlanner:
-    def __init__(self, robot_width=0.6, safety_distance=0.2, cluster_threshold=0.5):
+    def __init__(self, robot_width=0.6, safety_distance=0.2, cluster_threshold=0.3):
         self.robot_radius = robot_width / 2.0
         self.safety_distance = safety_distance
         self.d = self.robot_radius + self.safety_distance
@@ -26,8 +26,8 @@ class DisinfectionPlanner:
         # list of (x_start, y_start, x_end, y_end)
         self.wall_segments = []
         
-        # 訂閱 /object_wall_position 訊息，保留物體與原始牆壁座標
-        rospy.Subscriber("/object_wall_position", ObjectWallPosition, self.object_wall_callback)
+        # 訂閱 /filtered_position 訊息（包含物體座標及牆壁座標）
+        rospy.Subscriber("/filtered_position", ObjectWallPosition, self.object_wall_callback)
         # 訂閱 /filtered_segments 訊息（包含房間中所有牆壁的座標）
         rospy.Subscriber("/filtered_segments", FilteredSegment, self.wall_segment_callback)
         
@@ -60,8 +60,9 @@ class DisinfectionPlanner:
         """
         wall = (msg.x_start, msg.y_start, msg.x_end, msg.y_end)
         self.wall_segments.append(wall)
-        rospy.loginfo("Received wall segment: start=(%.2f, %.2f), end=(%.2f, %.2f)",
-                      msg.x_start, msg.y_start, msg.x_end, msg.y_end)
+
+        # Too noisy, comment out
+        # rospy.loginfo("Received wall segment: start=(%.2f, %.2f), end=(%.2f, %.2f)", msg.x_start, msg.y_start, msg.x_end, msg.y_end)
 
     def calculate_wall_direction(self, wall_p1, wall_p2):
         """根據牆面兩端點計算牆面方向角及其垂直方向角"""
@@ -97,7 +98,7 @@ class DisinfectionPlanner:
             stop_x, stop_y, orientation = obj_x, obj_y, 0
         return (stop_x, stop_y, orientation)
 
-    def cluster_detections(self, det_list, cluster_threshold=None, outlier_factor=1.0):
+    def cluster_detections(self, det_list, cluster_threshold=None):
         """
         對同一類型內所有檢測進行聚類（僅根據物體位置聚類）
         每個元素展平成一個列表：[x_obj, y_obj, wall1_x, wall1_y, wall2_x, wall2_y]
@@ -166,9 +167,9 @@ class DisinfectionPlanner:
         stop_poses = []
         for obj_type, det_list in self.object_dict.items():
             if obj_type.lower() == 'chair':
-                threshold = 1.3 
+                threshold = 1
             elif obj_type.lower() == 'side rail':
-                threshold = 0.4
+                threshold = 0.2
             else:
                 threshold = self.cluster_threshold 
 
@@ -288,7 +289,7 @@ class DisinfectionPlanner:
             return
 
         rospy.loginfo("Generated %d stop poses", len(stop_poses))
-        merged_stop_poses = self.merge_stop_poses(stop_poses, merge_threshold=0.3)
+        merged_stop_poses = self.merge_stop_poses(stop_poses, merge_threshold=0.4)
         rospy.loginfo("Merged to %d stop poses after filtering", len(merged_stop_poses))
         
         ordered_poses = self.tsp_path_schedule(current_start_pose, merged_stop_poses)
